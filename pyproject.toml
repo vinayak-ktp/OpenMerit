@@ -84,6 +84,7 @@ package-dir = { "openmerit" = "src" }
 # matches what is actually on disk, so it cannot silently fall out of date.
 packages = [
   "openmerit",
+  "openmerit.utils",
 ]
 
 [tool.setuptools.package-data]
