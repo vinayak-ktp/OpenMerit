@@ -85,6 +85,7 @@ package-dir = { "openmerit" = "src" }
 packages = [
   "openmerit",
   "openmerit.data",
+  "openmerit.llm",
   "openmerit.utils",
 ]
 
