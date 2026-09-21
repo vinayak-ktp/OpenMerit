@@ -86,6 +86,7 @@ packages = [
   "openmerit",
   "openmerit.data",
   "openmerit.llm",
+  "openmerit.perturb",
   "openmerit.utils",
 ]
 
