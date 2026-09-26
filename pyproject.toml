@@ -57,6 +57,7 @@ dependencies = [
 [project.optional-dependencies]
 gemini = ["google-genai>=1.0.0"]
 openai = ["openai>=1.30"]
+stats = ["statsmodels>=0.14"]
 
 [project.urls]
 Documentation = "https://github.com/your-org/openmerit/tree/main/docs"
@@ -91,6 +92,7 @@ package-dir = { "openmerit" = "src" }
 packages = [
   "openmerit",
   "openmerit.data",
+  "openmerit.fairness",
   "openmerit.llm",
   "openmerit.perturb",
   "openmerit.screening",
