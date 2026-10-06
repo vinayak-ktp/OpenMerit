@@ -96,6 +96,7 @@ packages = [
   "openmerit.fairness",
   "openmerit.llm",
   "openmerit.perturb",
+  "openmerit.pipeline",
   "openmerit.screening",
   "openmerit.utils",
 ]
