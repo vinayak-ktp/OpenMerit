@@ -98,6 +98,7 @@ packages = [
   "openmerit.mitigate",
   "openmerit.perturb",
   "openmerit.pipeline",
+  "openmerit.report",
   "openmerit.screening",
   "openmerit.utils",
 ]
