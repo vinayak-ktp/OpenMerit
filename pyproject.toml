@@ -59,6 +59,9 @@ gemini = ["google-genai>=1.0.0"]
 openai = ["openai>=1.30"]
 stats = ["statsmodels>=0.14"]
 
+[project.scripts]
+openmerit = "openmerit.cli:main"
+
 [project.urls]
 Documentation = "https://github.com/your-org/openmerit/tree/main/docs"
 
