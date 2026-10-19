@@ -262,6 +262,14 @@ EXPERIENCE
         result = validate_variant(self.BASE, variant, [Edit("NAME", "name", "a", "b")])
         assert not result["passed"]
 
+    def test_transform_may_gain_a_verb_but_not_lose_an_entity(self):
+        base = "- Led migration to Kubernetes at Northwind.\n"
+        good = writing_register(base, "hedged")
+        assert validate_variant(base, good, [], is_transform=True)["passed"]
+        bad = "- Helped lead migration.\n"
+        assert not validate_variant(base, bad, [], is_transform=True)["passed"]
+
+
 class TestGeneration:
     def test_baseline_is_unperturbed_and_flagged(self, corpus):
         resumes, _, _ = corpus

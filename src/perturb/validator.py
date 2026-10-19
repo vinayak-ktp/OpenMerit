@@ -35,6 +35,10 @@ from ..schemas import Edit
 from ..utils.text import char_diff_spans, normalized_edit_ratio, tokens
 from .transforms import capitalised_fingerprint, numeric_fingerprint, transform_vocabulary
 
+#: Below this many tokens a Jaccard ratio is dominated by a couple of words, so
+#: the similarity floor is not applied and the exact vocabulary check stands alone.
+_MIN_TOKENS_FOR_JACCARD = 60
+
 
 def _expand(term: str) -> Iterable[str]:
     """A term plus the sub-parts a different tokeniser might produce from it.
@@ -220,7 +224,14 @@ def validate_variant(
         union = set(base_tokens) | set(var_tokens)
         jaccard = len(set(base_tokens) & set(var_tokens)) / len(union) if union else 1.0
         checks["token_jaccard"] = round(jaccard, 4)
-        if require_skill_preservation and jaccard < min_token_jaccard:
+        # The similarity floor is a secondary guard against a runaway rewrite,
+        # and only meaningful once there is enough text for the ratio to be
+        # stable.
+        if (
+            require_skill_preservation
+            and len(base_tokens) >= _MIN_TOKENS_FOR_JACCARD
+            and jaccard < min_token_jaccard
+        ):
             failures.append(f"token overlap {jaccard:.3f} below {min_token_jaccard}")
     else:
         stray_added = [t for t in added_tokens if not (_expand(t) & allowed_words)]
