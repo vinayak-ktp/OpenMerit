@@ -58,6 +58,7 @@ dependencies = [
 gemini = ["google-genai>=1.0.0"]
 openai = ["openai>=1.30"]
 stats = ["statsmodels>=0.14"]
+dashboard = ["streamlit>=1.30"]
 
 [project.scripts]
 openmerit = "openmerit.cli:main"
@@ -95,6 +96,7 @@ package-dir = { "openmerit" = "src" }
 packages = [
   "openmerit",
   "openmerit.anonymize",
+  "openmerit.app",
   "openmerit.data",
   "openmerit.fairness",
   "openmerit.llm",
