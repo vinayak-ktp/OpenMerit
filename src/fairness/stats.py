@@ -477,10 +477,20 @@ def cluster_robust_ols(
         se = np.sqrt(np.clip(np.diag(vcov), 0.0, None))
 
     df = g - 1
-    with np.errstate(divide="ignore", invalid="ignore"):
-        t_values = np.where(se > 0, beta / se, np.nan)
-    # sf is the numerically stable form of 1 - cdf in the far tail.
-    p_values = 2.0 * sps.t.sf(np.abs(t_values), df=df)
+    # Compute t and p only where the standard error is positive. Dividing the
+    # whole vector and masking afterwards raises a genuine floating-point
+    # divide-by-zero, and NumPy reports leaked FPU status flags against whatever
+    # array operation happens next — which is how a masked division here
+    # surfaces as a spurious "overflow encountered in matmul" several lines
+    # later. Not generating the invalid operation is the fix; suppressing the
+    # warning is not.
+    t_values = np.full(k, np.nan)
+    p_values = np.full(k, np.nan)
+    estimable = se > 0
+    if estimable.any():
+        t_values[estimable] = beta[estimable] / se[estimable]
+        # sf is the numerically stable form of 1 - cdf in the far tail.
+        p_values[estimable] = 2.0 * sps.t.sf(np.abs(t_values[estimable]), df=df)
     crit = float(sps.t.ppf(1 - alpha / 2, df=df))
 
     with np.errstate(all="ignore"):

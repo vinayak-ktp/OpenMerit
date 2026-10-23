@@ -131,6 +131,10 @@ def _aggregate(values: np.ndarray, estimator: str, trim_fraction: float) -> floa
     if estimator == "trimmed_mean":
         ordered = np.sort(values)
         cut = int(np.floor(len(ordered) * trim_fraction))
+        # Never trim away the whole sample: with 3 variants a 25% trim would
+        # otherwise leave nothing.
+        if 2 * cut >= len(ordered):
+            cut = max(0, (len(ordered) - 1) // 2)
         kept = ordered[cut: len(ordered) - cut] if cut else ordered
         return float(np.mean(kept)) if len(kept) else float(np.mean(ordered))
     raise ValueError(f"unknown estimator {estimator!r}")
