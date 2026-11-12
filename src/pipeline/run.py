@@ -350,11 +350,75 @@ def score_baseline(state: PipelineState, *, dry_run: bool = False) -> PipelineSt
     return state
 
 
+def focus_pairs(state: PipelineState, *, dry_run: bool = False) -> PipelineState:
+    """Keep only the pairs whose baseline score is nearest a decision threshold.
+
+    A cue can only change a decision for a candidate near a cut-off; perturbing a
+    candidate thirty points clear of it spends calls on an outcome that cannot
+    flip. With ``perturbation.focus_pairs`` set, the variant stage (and every
+    re-scoring mitigation arm) is restricted to the ``N`` closest pairs. The
+    scorer sanity gate has already run on every pair by then.
+    """
+    cfg = state.cfg
+    limit = cfg.perturbation.focus_pairs
+    if not limit or len(state.pairs) <= limit:
+        return state
+
+    thresholds = (cfg.screening.borderline_threshold, cfg.screening.advance_threshold)
+    before = len(state.pairs)
+    scores: Dict[Tuple[str, str], List[float]] = {}
+    for record in state.records_by_arm.get("baseline_unperturbed", []):
+        if record.parse_ok and record.overall_score == record.overall_score:
+            scores.setdefault((record.job_id, record.base_resume_id), []).append(
+                float(record.overall_score)
+            )
+
+    if dry_run or not scores:
+        # Nothing scored yet: plan with the right number of pairs; the actual
+        # choice is made from the baseline scores of the real run.
+        kept = sorted(state.pairs, key=lambda pair: pair.pair_id)[:limit]
+        chosen = [{"pair_id": pair.pair_id} for pair in kept]
+    else:
+        ranked = []
+        for pair in state.pairs:
+            values = scores.get((pair.job_id, pair.resume_id))
+            if not values:
+                continue
+            mean = sum(values) / len(values)
+            distance = min(abs(mean - threshold) for threshold in thresholds)
+            ranked.append((distance, pair.pair_id, pair, mean))
+        ranked.sort(key=lambda row: (row[0], row[1]))
+        kept = [row[2] for row in ranked[:limit]]
+        chosen = [
+            {"pair_id": row[1], "baseline_score": round(row[3], 2), "distance": round(row[0], 2)}
+            for row in ranked[:limit]
+        ]
+
+    state.pairs = kept
+    message = (
+        f"Focused design: only the {len(kept)} of {before} candidate/job pairs nearest a "
+        f"decision threshold ({thresholds[0]:g} or {thresholds[1]:g}) were perturbed. Flip "
+        "rates describe borderline candidates, where a cue can change the outcome, not the "
+        "whole pool."
+    )
+    if not dry_run:
+        state.warnings.append(message)
+        state.manifest.warn(message)
+    state.manifest.record(
+        "focus_pairs",
+        {"n_pairs_before": before, "n_pairs_kept": len(kept), "thresholds": list(thresholds),
+         "pairs": chosen, "dry_run": dry_run},
+    )
+    log_event(logger, logging.INFO, "focused on borderline pairs", kept=len(kept), before=before)
+    return state
+
+
 def score_variants(state: PipelineState, *, dry_run: bool = False) -> PipelineState:
     """Phase 3: score every validated variant through the identical pipeline."""
     from ..fairness.suite import records_to_frame
 
     started = time.perf_counter()
+    focus_pairs(state, dry_run=dry_run)
     records, telemetry = score_arm(state, arm="baseline", dry_run=dry_run)
     if dry_run:
         state.manifest.record("score_variants", {"dry_run": True, **telemetry})
@@ -445,7 +509,7 @@ def mitigate(state: PipelineState, *, dry_run: bool = False) -> PipelineState:
         return state
 
     baseline_frame = state.frames_by_arm.get("baseline")
-    if baseline_frame is None or baseline_frame.empty:
+    if not dry_run and (baseline_frame is None or baseline_frame.empty):
         raise ValueError("mitigation needs baseline variant scores; run score_variants first")
 
     frames: Dict[str, pd.DataFrame] = {"baseline": baseline_frame}
@@ -609,6 +673,9 @@ def run_pipeline(
     if "score_variants" in selected:
         score_variants(state, dry_run=dry_run)
     if dry_run:
+        if "mitigate" in selected:
+            mitigate(state, dry_run=True)
+        state.manifest.set("planned_calls", planned_calls(state))
         state.manifest.set("status", "dry_run_complete")
         return state
     if "audit" in selected:
@@ -627,6 +694,46 @@ def run_pipeline(
         n_warnings=len(state.warnings),
     )
     return state
+
+
+def planned_calls(state: PipelineState) -> Dict[str, Any]:
+    """Total model calls a dry-run design would make, including mitigation arms.
+
+    The unperturbed resumes are scored twice by design (once for the sanity
+    gate, once inside the variant set); with the cache on, the second pass is
+    served from cache and costs no quota, so it is reported separately.
+    """
+    cfg = state.cfg
+    stages = state.manifest.data.get("stages", {})
+
+    def calls(payload: Any) -> int:
+        return int((payload or {}).get("n_calls") or 0)
+
+    baseline = calls(stages.get("score_baseline"))
+    variants = calls(stages.get("score_variants"))
+    arms = {
+        name: calls(info)
+        for name, info in ((stages.get("mitigate") or {}).get("arms") or {}).items()
+    }
+    total = baseline + variants + sum(arms.values())
+    reused = (
+        min(baseline, len(state.pairs) * max(1, cfg.llm.self_consistency_samples))
+        if cfg.llm.cache_enabled else 0
+    )
+    api_calls = total - reused
+    rpm = max(1, cfg.llm.requests_per_minute)
+    return {
+        "provider": cfg.llm.provider,
+        "model": cfg.llm.model,
+        "baseline_calls": baseline,
+        "variant_calls": variants,
+        "mitigation_calls": arms,
+        "total_calls": total,
+        "served_from_cache": reused,
+        "api_calls": api_calls,
+        "requests_per_minute": rpm,
+        "estimated_minutes": round(api_calls / rpm, 1),
+    }
 
 
 # --------------------------------------------------------------------------- #

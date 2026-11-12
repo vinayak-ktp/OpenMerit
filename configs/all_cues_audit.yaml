@@ -1,0 +1,52 @@
+# Every cue family, audited on a real LLM at a fraction of the full design's cost.
+#
+#   openmerit pipeline --config configs/all_cues_audit.yaml --provider gemini --dry-run
+#
+# Same nine cue families as configs/offline_demo.yaml, but where that design
+# makes about 10,400 model calls, this one makes about 300. The difference is
+# what the extra calls buy, which is mostly precision rather than coverage:
+#
+#   levels_by_family          two variants per cue, except names, which keep
+#                             two per gender x race group
+#   focus_pairs: 12           only candidates near a decision cut-off
+#   repeat_scope: baseline    repeats only the original resume (noise floor)
+#   mitigation.strategies     post-hoc only; prompt-level mitigations re-score
+#                             every variant, so test them only once a bias has
+#                             been found, and only the one you would deploy
+#
+# For research-grade precision (per-name effects, tight intervals, mitigation
+# head-to-heads), run configs/offline_demo.yaml with --provider instead, once
+# per model version.
+
+run_name: all_cues_audit
+seed: 20250831
+
+llm:
+  self_consistency_samples: 3
+  repeat_scope: baseline
+  cache_enabled: true
+
+perturbation:
+  cue_families:
+    - name
+    - gender_marker
+    - cultural_affiliation
+    - nationality_region
+    - age_dates
+    - disability_marker
+    - socioeconomic_marker
+    - education_prestige # validity probe
+    - writing_register
+  name_list: bertrand_mullainathan_2004
+  design: single
+  levels_per_family: 2
+  levels_by_family:
+    name: 8
+  rotate_levels: true # spread the kept levels evenly across candidates
+  focus_pairs: 12
+
+mitigation:
+  strategies:
+    - counterfactual_marginalization
+    - sensitivity_gated_review
+    - cue_effect_debiasing

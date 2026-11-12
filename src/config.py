@@ -129,6 +129,11 @@ class PerturbationConfig:
     #: them at random, so every level is used about equally often. Use it when
     #: only one or two levels per family are kept per resume.
     rotate_levels: bool = False
+    #: Perturb only this many candidate/job pairs: the ones whose baseline score
+    #: is closest to a decision threshold, which is where a cue can change the
+    #: outcome. ``None`` perturbs every pair. Flip rates from a focused run
+    #: describe borderline candidates, not the whole pool.
+    focus_pairs: Optional[int] = None
     #: ``single`` varies one family at a time (clean main effects).
     #: ``factorial_name_x_gender`` additionally crosses name × gender marker to
     #: estimate an interaction, which is where intersectional effects appear.
@@ -306,6 +311,8 @@ class Config:
             errors.append("llm.self_consistency_samples must be >= 1")
         if self.llm.repeat_scope not in ("all", "baseline"):
             errors.append("llm.repeat_scope must be 'all' or 'baseline'")
+        if self.perturbation.focus_pairs is not None and self.perturbation.focus_pairs < 1:
+            errors.append("perturbation.focus_pairs must be >= 1 when set")
         if not isinstance(self.perturbation.levels_by_family, dict):
             errors.append("perturbation.levels_by_family must be a mapping family -> levels")
         else:

@@ -1,0 +1,48 @@
+# Quick audit of a real LLM: name swaps on borderline candidates.
+#
+#   openmerit pipeline --config configs/quick_audit.yaml --provider gemini --dry-run
+#   openmerit pipeline --config configs/quick_audit.yaml --provider gemini
+#
+# About 190 model calls on the sample corpus, so a free-tier key finishes it in
+# roughly a quarter of an hour. The cost controls, and why each one keeps the
+# evidence that matters:
+#
+#   levels_per_family: 8      two names per gender x race group, not every name
+#   focus_pairs: 12           only candidates near the 55/70 cut-offs, where a
+#                             cue can actually change the decision
+#   repeat_scope: baseline    repeats only the original resume: enough to
+#                             measure the model's noise floor
+#   mitigation.strategies     only the post-hoc strategies, which need no calls
+#
+# Start here. Run configs/all_cues_audit.yaml next for every cue family.
+
+run_name: quick_audit
+seed: 20250831
+
+llm:
+  self_consistency_samples: 3
+  repeat_scope: baseline
+  cache_enabled: true # an unchanged re-run costs nothing
+
+perturbation:
+  cue_families:
+    - name
+    - education_prestige # validity probe: a scorer that ignores credentials is inert
+  name_list: bertrand_mullainathan_2004
+  design: single
+  levels_per_family: 8
+  rotate_levels: true # spread the kept levels evenly across candidates
+  focus_pairs: 12
+
+fairness:
+  attributes: [gender, race_ethnicity]
+  reference_levels:
+    gender: male
+    race_ethnicity: White
+  intersectional_attributes: [gender, race_ethnicity]
+
+mitigation:
+  strategies:
+    - counterfactual_marginalization
+    - sensitivity_gated_review
+    - cue_effect_debiasing

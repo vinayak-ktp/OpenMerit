@@ -454,6 +454,15 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     print(f"artifacts: {state.root}")
     if args.dry_run:
         print("(dry run — no model calls were made)")
+        plan = state.manifest.data.get("planned_calls")
+        if plan:
+            arms = ", ".join(f"{name} {n}" for name, n in plan["mitigation_calls"].items() if n)
+            print(
+                f"planned: {plan['api_calls']} {plan['provider']}/{plan['model']} calls "
+                f"(baseline {plan['baseline_calls']}, variants {plan['variant_calls']}"
+                f"{', ' + arms if arms else ''}; {plan['served_from_cache']} reused from cache) "
+                f"≈ {plan['estimated_minutes']} min at {plan['requests_per_minute']} requests/min"
+            )
         return 0
     if state.audit_report is not None:
         from .fairness.suite import audit_summary, headline_findings
