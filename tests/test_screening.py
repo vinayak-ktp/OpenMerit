@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import copy
+
 import pytest
 
+from openmerit.pipeline import run_pipeline
+from openmerit.pipeline.run import generate_variants, prepare_data, start_run
+from openmerit.screening import build_items
 from openmerit.screening.evidence import check_evidence
 from openmerit.screening.parse import coerce_score, extract_json, parse_screening_response
 from openmerit.screening.prompts import (
@@ -335,3 +340,42 @@ class TestSanityCheckAndRanking:
         assert [c.rank for c in ranked] == list(range(1, len(ranked) + 1))
         assert [c.score for c in ranked] == sorted((c.score for c in ranked), reverse=True)
         assert sum(1 for c in ranked if c.in_top_k) == min(2, len(ranked))
+
+
+# --------------------------------------------------------------------------- #
+# repeating only the original resume
+# --------------------------------------------------------------------------- #
+def _repeat_cfg(cfg):
+    cfg = copy.deepcopy(cfg)
+    cfg.perturbation.cue_families = ["name", "education_prestige"]
+    cfg.perturbation.levels_per_family = 4
+    cfg.llm.self_consistency_samples = 3
+    cfg.llm.mock_noise_sd = 1.5
+    return cfg
+
+
+def test_baseline_repeat_scope_repeats_only_the_original_resume(cfg, tmp_path):
+    cfg = _repeat_cfg(cfg)
+    state = start_run(cfg)
+    prepare_data(state)
+    generate_variants(state)
+    everything = build_items(state.jobs, state.variants, state.pairs, n_samples=3)
+    lean = build_items(state.jobs, state.variants, state.pairs, n_samples=3, repeat_scope="baseline")
+
+    repeated = [item for item in lean if item.sample_index > 0]
+    assert repeated and all(item.variant.is_baseline for item in repeated)
+    n_variant_items = sum(1 for item in everything if item.sample_index == 0)
+    n_baseline_items = sum(1 for item in everything if item.sample_index == 0 and item.variant.is_baseline)
+    assert len(lean) == n_variant_items + 2 * n_baseline_items
+    assert len(lean) < len(everything) / 2
+
+
+def test_baseline_repeat_scope_still_measures_the_noise_floor(cfg):
+    cfg = _repeat_cfg(cfg)
+    cfg.llm.repeat_scope = "baseline"
+    cfg.data.max_resumes = 6
+    state = run_pipeline(cfg, stages=["prepare_data", "generate_variants", "score_variants", "audit"])
+
+    reliability = state.audit_report.reliability
+    assert reliability["has_repeats"]
+    assert reliability["noise_floor_sd"] > 0

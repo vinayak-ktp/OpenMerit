@@ -174,13 +174,15 @@ def generate_variants(state: PipelineState) -> PipelineState:
 
     variants: List[ResumeVariant] = []
     skips: List[Dict[str, Any]] = []
-    for resume in state.resumes:
+    for slot, resume in enumerate(state.resumes):
         resume_rng = make_rng(cfg.perturbation.seed, f"perturb:{resume.resume_id}")
         produced, resume_skips = gen(
             resume,
             registry,
             design=cfg.perturbation.design,
             levels_per_family=cfg.perturbation.levels_per_family,
+            levels_by_family=cfg.perturbation.levels_by_family,
+            level_slot=slot if cfg.perturbation.rotate_levels else None,
             include_baseline=cfg.perturbation.include_baseline,
             validate=cfg.perturbation.validate_variants,
             max_unintended_edit_ratio=cfg.perturbation.max_unintended_edit_ratio,
@@ -258,6 +260,7 @@ def score_arm(
     items = build_items(
         state.jobs, variants, state.pairs,
         n_samples=cfg.llm.self_consistency_samples, arm=arm,
+        repeat_scope=cfg.llm.repeat_scope,
     )
     # The perturbation layer records the original name so blind screening can
     # redact it exactly rather than relying on header detection.

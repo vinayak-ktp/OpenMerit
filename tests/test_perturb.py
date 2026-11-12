@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import warnings
+from collections import Counter, defaultdict
 
 import pytest
 
@@ -37,6 +39,8 @@ from openmerit.perturb.transforms import (
     writing_register,
 )
 from openmerit.perturb.validator import summarise_validation, validate_variant
+from openmerit.pipeline.run import generate_variants as pipeline_variants
+from openmerit.pipeline.run import prepare_data, start_run
 from openmerit.utils.seeds import rng
 
 
@@ -373,3 +377,62 @@ class TestTransformVocabularyCompleteness:
                     if not (parts & allowed):
                         stray.add(token)
         assert not stray, f"register transforms touch undeclared tokens: {sorted(stray)}"
+
+
+# --------------------------------------------------------------------------- #
+# per-cue variant counts and even coverage
+# --------------------------------------------------------------------------- #
+def _variants(cfg):
+    state = start_run(cfg)
+    prepare_data(state)
+    pipeline_variants(state)
+    per_resume = defaultdict(Counter)
+    per_level = defaultdict(Counter)
+    for variant in state.variants:
+        if variant.is_baseline:
+            continue
+        for family, level in variant.cue_ids.items():
+            per_resume[variant.base_resume_id][family] += 1
+            per_level[family][level] += 1
+    return per_resume, per_level
+
+
+def _lean(cfg, rotate):
+    cfg = copy.deepcopy(cfg)
+    cfg.perturbation.cue_families = ["name", "nationality_region", "education_prestige"]
+    cfg.perturbation.levels_per_family = 2
+    cfg.perturbation.levels_by_family = {"name": 8, "nationality_region": 2}  # alias of location_marker
+    cfg.perturbation.rotate_levels = rotate
+    cfg.validate()
+    return cfg
+
+
+def test_levels_by_family_overrides_the_shared_level_count(cfg):
+    per_resume, _ = _variants(_lean(cfg, rotate=False))
+
+    for counts in per_resume.values():
+        assert counts["name"] == 8
+        assert counts["location_marker"] <= 2
+        assert counts["education_prestige"] <= 2
+
+
+def test_levels_by_family_rejects_a_family_that_is_not_enabled(cfg):
+    cfg = copy.deepcopy(cfg)
+    cfg.perturbation.levels_by_family = {"nmae": 8}
+    with pytest.raises(ValueError, match="levels_by_family"):
+        cfg.validate()
+
+
+def test_rotation_spreads_kept_levels_evenly_across_resumes(cfg):
+    _, rotated = _variants(_lean(cfg, rotate=True))
+
+    for family in ("location_marker", "education_prestige"):
+        counts = sorted(rotated[family].values())
+        assert max(counts) - min(counts) <= 1, (family, rotated[family])
+
+
+def test_rotation_is_off_by_default_so_existing_designs_are_unchanged(cfg):
+    assert cfg.perturbation.rotate_levels is False
+    first = _variants(_lean(cfg, rotate=False))[1]
+    again = _variants(_lean(cfg, rotate=False))[1]
+    assert first == again

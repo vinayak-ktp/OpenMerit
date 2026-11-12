@@ -41,7 +41,7 @@ from ..logging_setup import log_event
 from ..schemas import Edit, Resume, ResumeVariant
 from ..utils.hashing import hash_text
 from ..utils.text import clean_text
-from .cues import CueFamily, CueLevel
+from .cues import CueFamily, CueLevel, resolve_family_name
 from .transforms import apply_transform
 from .validator import validate_variant
 
@@ -252,13 +252,25 @@ def _apply_levels(
     return clean_text(text), edits, skipped, used_transform
 
 
+def _rotated(items: Sequence[Any], take: int, slot: int) -> List[Any]:
+    """``take`` consecutive items starting at ``slot * take``, wrapping around."""
+    start = (slot * take) % len(items)
+    picked = [items[(start + i) % len(items)] for i in range(take)]
+    return sorted(picked, key=items.index)
+
+
 def _select_levels(
-    family: CueFamily, limit: Optional[int], rng
+    family: CueFamily, limit: Optional[int], rng, slot: Optional[int] = None
 ) -> List[CueLevel]:
     """Subsample a family's levels, always keeping the reference level.
 
     For ``name`` the subsample stays balanced across gender × ethnicity cells,
     because an unbalanced name subsample would confound the marginal effects.
+
+    With ``slot`` (the resume's position in the corpus) the subsample rotates
+    through the levels instead of being drawn at random, so across the corpus
+    every level is used about equally often. Random draws leave some levels
+    almost unobserved when only one or two are kept per resume.
     """
     levels = list(family.levels)
     if limit is None or limit >= len(levels):
@@ -273,6 +285,9 @@ def _select_levels(
         for key in sorted(cells):
             items = cells[key]
             take = min(per_cell, len(items))
+            if slot is not None:
+                chosen.extend(_rotated(items, take, slot))
+                continue
             idx = sorted(int(i) for i in rng.choice(len(items), size=take, replace=False))
             chosen.extend(items[i] for i in idx)
         return chosen
@@ -280,8 +295,11 @@ def _select_levels(
     others = [lvl for lvl in levels if not lvl.is_reference]
     keep = max(0, limit - len(reference))
     if keep < len(others):
-        idx = sorted(int(i) for i in rng.choice(len(others), size=keep, replace=False))
-        others = [others[i] for i in idx]
+        if slot is not None and keep:
+            others = _rotated(others, keep, slot)
+        else:
+            idx = sorted(int(i) for i in rng.choice(len(others), size=keep, replace=False))
+            others = [others[i] for i in idx]
     return reference + others
 
 
@@ -291,6 +309,8 @@ def generate_variants(
     *,
     design: str = "single",
     levels_per_family: Optional[int] = None,
+    levels_by_family: Optional[Dict[str, int]] = None,
+    level_slot: Optional[int] = None,
     include_baseline: bool = True,
     validate: bool = True,
     max_unintended_edit_ratio: float = 0.02,
@@ -312,7 +332,10 @@ def generate_variants(
     variants: List[ResumeVariant] = [base] if include_baseline else []
     skips: List[Dict[str, Any]] = []
 
-    combos = _combinations(registry, design=design, levels_per_family=levels_per_family, rng=rng)
+    combos = _combinations(
+        registry, design=design, levels_per_family=levels_per_family,
+        levels_by_family=levels_by_family, rng=rng, slot=level_slot,
+    )
     if len(combos) > max_variants:
         raise ValueError(
             f"design {design!r} would generate {len(combos)} variants for resume "
@@ -387,11 +410,16 @@ def _combinations(
     design: str,
     levels_per_family: Optional[int],
     rng,
+    levels_by_family: Optional[Dict[str, int]] = None,
+    slot: Optional[int] = None,
 ) -> List[Tuple[Tuple[CueFamily, ...], Tuple[CueLevel, ...]]]:
     """Enumerate (families, levels) tuples for the requested design."""
     families = list(registry.values())
+    # Keys may use a config alias (``gender_marker``) or the family's own name.
+    overrides = {resolve_family_name(k): v for k, v in (levels_by_family or {}).items()}
     per_family = {
-        f.family: _select_levels(f, levels_per_family, rng) for f in families
+        f.family: _select_levels(f, overrides.get(f.family, levels_per_family), rng, slot)
+        for f in families
     }
 
     combos: List[Tuple[Tuple[CueFamily, ...], Tuple[CueLevel, ...]]] = []

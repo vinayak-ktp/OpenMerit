@@ -66,8 +66,13 @@ def build_items(
     n_samples: int = 1,
     arm: str = "baseline",
     include_invalid_variants: bool = False,
+    repeat_scope: str = "all",
 ) -> List[BatchItem]:
     """Cross the pair list with the variant set.
+
+    ``repeat_scope="baseline"`` gives the ``n_samples`` repeats only to each
+    candidate's unperturbed resume and scores every cue variant once: the noise
+    floor is still measured for every candidate, at a fraction of the calls.
 
     A variant that failed validation is excluded by default but *counted*: the
     exclusion is reported so the reader knows how much of the design survived,
@@ -88,7 +93,8 @@ def build_items(
         if job is None:
             continue
         for variant in variants_by_resume.get(pair.resume_id, []):
-            for sample_index in range(max(1, n_samples)):
+            repeats = n_samples if repeat_scope == "all" or variant.is_baseline else 1
+            for sample_index in range(max(1, repeats)):
                 items.append(
                     BatchItem(
                         job=job,

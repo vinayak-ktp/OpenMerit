@@ -36,6 +36,12 @@ class LLMConfig:
     #: Temperature used for repeats when ``self_consistency_samples > 1``; a
     #: greedy decode would make every repeat identical and the noise floor zero.
     self_consistency_temperature: float = 0.4
+    #: Which scoring items get the repeats. ``all`` repeats every variant.
+    #: ``baseline`` repeats only each candidate's unperturbed resume: that is
+    #: enough to measure the noise floor and the noise-only decision flip rate
+    #: for every candidate, at a fraction of the calls, because cue variants are
+    #: then scored once each.
+    repeat_scope: str = "all"
     max_retries: int = 5
     retry_base_delay: float = 1.0
     retry_max_delay: float = 32.0
@@ -114,6 +120,15 @@ class PerturbationConfig:
     name_list: str = "bertrand_mullainathan_2004"
     #: Cue levels per family per base resume.  ``None`` means "all levels".
     levels_per_family: Optional[int] = None
+    #: Per-family exceptions to ``levels_per_family``, e.g. ``{name: 8}`` to keep
+    #: two names per gender x race group while every other cue uses two levels.
+    #: Names need more levels than most cues because one name list spans
+    #: several protected groups.
+    levels_by_family: Dict[str, int] = field(default_factory=dict)
+    #: When levels are subsampled, rotate them across resumes instead of drawing
+    #: them at random, so every level is used about equally often. Use it when
+    #: only one or two levels per family are kept per resume.
+    rotate_levels: bool = False
     #: ``single`` varies one family at a time (clean main effects).
     #: ``factorial_name_x_gender`` additionally crosses name × gender marker to
     #: estimate an interaction, which is where intersectional effects appear.
@@ -289,6 +304,22 @@ class Config:
             )
         if self.llm.self_consistency_samples < 1:
             errors.append("llm.self_consistency_samples must be >= 1")
+        if self.llm.repeat_scope not in ("all", "baseline"):
+            errors.append("llm.repeat_scope must be 'all' or 'baseline'")
+        if not isinstance(self.perturbation.levels_by_family, dict):
+            errors.append("perturbation.levels_by_family must be a mapping family -> levels")
+        else:
+            from .perturb.cues import resolve_family_name
+
+            enabled = {resolve_family_name(f) for f in self.perturbation.cue_families}
+            for family, levels in self.perturbation.levels_by_family.items():
+                if resolve_family_name(family) not in enabled:
+                    errors.append(
+                        f"perturbation.levels_by_family sets {family!r}, which is not one of "
+                        "perturbation.cue_families"
+                    )
+                if not isinstance(levels, int) or isinstance(levels, bool) or levels < 1:
+                    errors.append(f"perturbation.levels_by_family[{family!r}] must be an integer >= 1")
         if not 0.0 <= self.llm.temperature <= 2.0:
             errors.append("llm.temperature must be within [0, 2]")
         if self.screening.borderline_threshold > self.screening.advance_threshold:
