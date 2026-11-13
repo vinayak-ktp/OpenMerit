@@ -238,6 +238,119 @@ def evaluate_offline(resume_text: str, job_text: str, root: Path) -> Dict[str, A
     )
 
 
+#: Environment variables that hold each hosted provider's API key.
+API_KEY_ENV = {
+    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    "openai": ("OPENAI_API_KEY",),
+}
+
+
+def _llm_target() -> "tuple[str, str, bool]":
+    """The evaluator's provider and model, and whether its API key is set.
+
+    The fairness audit's real-LLM mode audits exactly this model: auditing a
+    different one says nothing about the model that screens candidates.
+    """
+    load_dotenv_if_present()
+    try:
+        provider = _provider_name()
+    except ValueError:
+        return os.environ.get("OPENMERIT_PROVIDER", DEFAULT_PROVIDER), "", False
+    model = os.environ.get("OPENMERIT_MODEL") or DEFAULT_MODELS.get(provider, "")
+    configured = bool(model) and any(os.environ.get(name) for name in API_KEY_ENV.get(provider, ()))
+    return provider, model, configured
+
+
+def _add_audit_routes(app: Any, root: Path, jobs: Any = None) -> None:
+    """Workflow 2: plan and launch fairness audits, and browse finished runs."""
+    from fastapi import Body, HTTPException
+    from fastapi.responses import FileResponse
+
+    from . import web_audit
+
+    directory = web_audit.runs_dir(root)
+    app.state.audit_jobs = jobs or web_audit.AuditJobs(root, directory, llm_target=_llm_target)
+
+    @app.get("/api/audit/presets")
+    def audit_presets() -> Dict[str, Any]:
+        return {
+            "presets": [
+                {"key": key, **{k: v for k, v in preset.items() if k != "config"}}
+                for key, preset in web_audit.PRESETS.items()
+            ],
+            "llm": app.state.audit_jobs.llm_settings(),
+            "validation_estimate_minutes": web_audit.VALIDATION_ESTIMATE_MINUTES,
+            "stages": [{"key": k, "label": label} for k, label in web_audit.PIPELINE_STAGES],
+        }
+
+    @app.post("/api/audit/plan")
+    def audit_plan(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+        try:
+            return app.state.audit_jobs.plan(
+                str(payload.get("preset", "")), str(payload.get("mode", "llm"))
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("audit planning failed")
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.get("/api/audit/runs")
+    def audit_runs() -> Dict[str, Any]:
+        return {"runs": web_audit.list_runs(directory)}
+
+    @app.get("/api/audit/runs/{run_id}")
+    def audit_run(run_id: str) -> Dict[str, Any]:
+        try:
+            return web_audit.run_details(directory, run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/audit/runs/{run_id}/report/{filename}")
+    def audit_report_file(run_id: str, filename: str):
+        try:
+            path = web_audit.report_file(directory, run_id, filename)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="Report file not found.") from exc
+        return FileResponse(path, media_type=web_audit.REPORT_MEDIA_TYPES[path.suffix.lower()])
+
+    @app.get("/api/audit/validation")
+    def audit_validation() -> Dict[str, Any]:
+        return {"validation": web_audit.latest_validation(directory)}
+
+    @app.get("/api/audit/job")
+    def audit_job() -> Dict[str, Any]:
+        return app.state.audit_jobs.status()
+
+    @app.post("/api/audit/job")
+    def start_audit_job(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+        kind = str(payload.get("kind", "pipeline"))
+        try:
+            if kind == "validation":
+                return app.state.audit_jobs.start_validation()
+            if kind == "pipeline":
+                confirmed = payload.get("confirmed_calls")
+                return app.state.audit_jobs.start_pipeline(
+                    str(payload.get("preset", "")),
+                    str(payload.get("mode", "offline")),
+                    confirmed_calls=int(confirmed) if confirmed is not None else None,
+                )
+            raise ValueError(f"Unknown audit job kind {kind!r}.")
+        except web_audit.AuditBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/audit/job/cancel")
+    def cancel_audit_job() -> Dict[str, Any]:
+        try:
+            return app.state.audit_jobs.cancel()
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 def create_app():
     try:
         from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -296,6 +409,8 @@ def create_app():
                 status_code=502,
                 detail="The offline scorer could not produce a result. Try again.",
             ) from exc
+
+    _add_audit_routes(app, root)
 
     web_root = _web_root()
     app.mount("/assets", StaticFiles(directory=web_root / "assets"), name="assets")
