@@ -387,6 +387,7 @@
       ["Metrics evaluated", count(run.n_metrics)],
       ["Failed thresholds", count(run.n_failed)],
       ["Significant after FDR", count(run.n_significant_after_fdr)],
+      ["Significant and above threshold", count(run.n_material)],
       ["Metric conflicts", count(run.n_conflicts)],
     ];
     return `<div class="tiles">${items.map(([label, value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")}</div>`;
@@ -617,8 +618,8 @@
         <div><span>Cue families</span><strong>${esc((run.cue_families || []).map(human).join(", ") || "—")}</strong></div>
         <div><span>Run time</span><strong>${duration(run.elapsed_s)}</strong></div>
       </div>
-      ${offline ? `<div class="note"><strong>Tool check.</strong> These numbers describe the offline scorer, which has no bias by construction and deliberate random noise, not a real model. A healthy audit shows <strong>0 significant after FDR</strong> and a non-zero noise floor. Threshold "fails" here are mostly that noise near the decision cut-offs.</div>`
-        : `<div class="note llm"><strong>LLM audit of ${esc(run.provider)} / ${esc(run.model)}.</strong> <strong>Significant after FDR</strong> counts effects unlikely to be chance after correcting for the number of tests: start there. A threshold "fail" on its own can be noise; compare it with the noise floor below.</div>`}
+      ${offline ? `<div class="note"><strong>Tool check.</strong> These numbers describe the offline scorer, which has no bias by construction and deliberate random noise, not a real model. A healthy audit shows <strong>0 significant and above threshold</strong> and a non-zero noise floor. Threshold "fails" here are mostly that noise near the decision cut-offs, and a "significant" effect of a few hundredths of a point is the offline scorer reacting to slightly longer text.</div>`
+        : `<div class="note llm"><strong>LLM audit of ${esc(run.provider)} / ${esc(run.model)}.</strong> Start with <strong>Significant and above threshold</strong>: effects that are unlikely to be chance after correcting for the number of tests <em>and</em> large enough to matter. A threshold "fail" on its own can be noise, and a significant but tiny effect can be harmless; compare both with the noise floor below.</div>`}
       ${(run.design_notes || []).map((n) => `<div class="note">${esc(n)}</div>`).join("")}
       ${(run.warnings || []).length ? `<div class="fallback"><strong>Run warnings.</strong> ${run.warnings.map(esc).join(" ")}</div>` : ""}
       ${tiles(run)}

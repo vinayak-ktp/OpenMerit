@@ -175,6 +175,7 @@ def test_run_details_reshapes_artifacts_and_drops_nan(runs):
     details = web_audit.run_details(runs, RUN_ID)
 
     assert details["n_variants"] == 40
+    assert details["n_material"] == 0
     assert details["reliability"]["cue_effect_to_noise_ratio"] is None
     assert details["cue_effects"] == [{
         "cue": "name", "swing": 1.5, "swing_ci_low": 1.2, "swing_ci_high": 1.8,

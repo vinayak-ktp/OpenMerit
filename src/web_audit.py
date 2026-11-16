@@ -407,6 +407,10 @@ def run_details(directory: Path, run_id: str) -> Dict[str, Any]:
             "n_jobs": summary.get("n_jobs"),
             "n_variants": summary.get("n_variants") or variants_stage.get("n_variants"),
             "n_focus_pairs": focus.get("n_pairs_kept"),
+            # Statistically significant AND past the metric's practical threshold:
+            # with low-noise scoring a 0.01-point gap can be significant, and
+            # significance alone says nothing about whether it matters.
+            "n_material": sum(1 for m in metrics if m["significant"] and m["passed"] is False),
             "api_calls": usage.get("api_calls"),
             "by_family": summary.get("by_family") or {},
             "skipped_families": summary.get("skipped_families") or [],
