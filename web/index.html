@@ -3,42 +3,105 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Candidate Evaluation · OpenMerit</title>
-    <link rel="stylesheet" href="/assets/styles.css">
+    <title>OpenMerit</title>
+    <link rel="stylesheet" href="/assets/styles.css?v=4">
   </head>
   <body>
-    <main class="shell">
-      <header class="header">
-        <div>
-          <p class="eyebrow">OPENMERIT</p>
-          <h1>Evaluate a resume against a role.</h1>
-          <p class="lede">Upload one resume, add the job description, and get an evidence-backed screening summary.</p>
-        </div>
-        <div class="status"><span class="dot"></span> <span id="provider-status">AI model first</span> · offline fallback ready</div>
-      </header>
+    <main class="shell" id="shell">
+      <nav class="tabs" aria-label="Workflows">
+        <a class="tab active" href="#evaluate" data-view="evaluate" aria-current="page"><span class="tab-step">1</span> Candidate evaluator</a>
+        <a class="tab" href="#audit" data-view="audit"><span class="tab-step">2</span> Fairness audit</a>
+      </nav>
 
-      <section class="panel form-panel" aria-labelledby="screen-heading">
-        <div class="section-heading">
-          <div><h2 id="screen-heading">Add the screening materials</h2><p>We accept TXT, PDF, and DOCX files up to 5 MB.</p></div>
-        </div>
-        <form id="screen-form">
-          <label class="upload" id="upload-box">
-            <input id="resume" name="resume" type="file" accept=".txt,.md,.pdf,.docx" required>
-            <span class="upload-icon">↑</span>
-            <strong id="upload-title">Choose a resume</strong>
-            <span id="upload-detail">or drag and drop it here</span>
-          </label>
-          <label class="field">
-            <span>Job description</span>
-            <textarea id="job-description" name="job_description" minlength="40" required placeholder="Paste the role description, responsibilities, and requirements here..."></textarea>
-          </label>
-          <button class="primary" id="submit-button" type="submit">Evaluate resume <span>→</span></button>
-          <p class="privacy">Your file is processed temporarily. API credentials stay on the server, and the resume is not saved by this page.</p>
-        </form>
-      </section>
+      <div class="view" id="view-evaluate">
+        <header class="header">
+          <div>
+            <p class="eyebrow">OPENMERIT</p>
+            <h1>Evaluate a resume against a role.</h1>
+            <p class="lede">Upload one resume, add the job description, and get an evidence-backed screening summary.</p>
+          </div>
+          <div class="status"><span class="dot"></span> <span id="provider-status">AI model first</span> · offline fallback ready</div>
+        </header>
 
-      <section class="panel result-panel hidden" id="result" aria-live="polite"></section>
+        <section class="panel form-panel" aria-labelledby="screen-heading">
+          <div class="section-heading">
+            <div><h2 id="screen-heading">Add the screening materials</h2><p>We accept TXT, PDF, and DOCX files up to 5 MB.</p></div>
+          </div>
+          <form id="screen-form">
+            <label class="upload" id="upload-box">
+              <input id="resume" name="resume" type="file" accept=".txt,.md,.pdf,.docx" required>
+              <span class="upload-icon">↑</span>
+              <strong id="upload-title">Choose a resume</strong>
+              <span id="upload-detail">or drag and drop it here</span>
+            </label>
+            <label class="field">
+              <span>Job description</span>
+              <textarea id="job-description" name="job_description" minlength="40" required placeholder="Paste the role description, responsibilities, and requirements here..."></textarea>
+            </label>
+            <button class="primary" id="submit-button" type="submit">Evaluate resume <span>→</span></button>
+            <p class="privacy">Your file is processed temporarily. API credentials stay on the server, and the resume is not saved by this page.</p>
+          </form>
+        </section>
+
+        <section class="panel result-panel hidden" id="result" aria-live="polite"></section>
+      </div>
+
+      <div class="view hidden" id="view-audit">
+        <header class="header">
+          <div>
+            <p class="eyebrow">FAIRNESS AUDIT</p>
+            <h1>Test the screener, not the candidate.</h1>
+            <p class="lede">Change only identity and proxy cues on otherwise identical resumes, measure what moves the score or the decision, and compare mitigation strategies.</p>
+          </div>
+          <div class="status"><span class="dot"></span> Offline scorer · no API calls</div>
+        </header>
+
+        <section class="panel" aria-labelledby="audit-run-heading">
+          <div class="section-heading">
+            <div>
+              <h2 id="audit-run-heading">Run an audit</h2>
+              <p>Audit the model your evaluator uses, or check the audit tool itself for free.</p>
+            </div>
+          </div>
+          <div class="mode-switch" id="mode-switch" role="radiogroup" aria-label="What to audit">
+            <button type="button" class="mode" data-mode="llm" role="radio" aria-checked="false">
+              <strong>LLM audit</strong>
+              <span id="mode-llm-model">The evaluator's model</span>
+              <small>Uses API calls · exact count shown before it starts</small>
+            </button>
+            <button type="button" class="mode" data-mode="offline" role="radio" aria-checked="false">
+              <strong>Tool check</strong>
+              <span>Offline scorer · free</span>
+              <small>Checks the audit itself, not a model</small>
+            </button>
+          </div>
+          <p class="mode-note" id="mode-note"></p>
+          <div class="preset-grid" id="preset-grid" role="radiogroup" aria-label="Audit design"></div>
+          <div class="confirm hidden" id="audit-confirm" aria-live="polite"></div>
+          <div class="audit-actions">
+            <button class="primary" id="audit-start" type="button">Start audit <span>→</span></button>
+            <button class="secondary-action" id="validate-start" type="button">Validate the auditor (offline, free)</button>
+          </div>
+          <div class="job hidden" id="audit-job" aria-live="polite"></div>
+          <div class="validation hidden" id="validation"></div>
+        </section>
+
+        <section class="panel audit-results" aria-labelledby="audit-results-heading">
+          <div class="results-heading">
+            <div>
+              <h2 id="audit-results-heading">Audit results</h2>
+              <p>System-level evidence from a finished run. It does not certify any single candidate's result.</p>
+            </div>
+            <label class="run-picker">
+              <span>Run</span>
+              <select id="run-select" disabled><option>Loading runs…</option></select>
+            </label>
+          </div>
+          <div id="audit-results"></div>
+        </section>
+      </div>
     </main>
-    <script src="/assets/app.js?v=2"></script>
+    <script src="/assets/app.js?v=3"></script>
+    <script src="/assets/audit.js?v=2"></script>
   </body>
 </html>
