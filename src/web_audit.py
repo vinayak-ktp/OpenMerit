@@ -635,15 +635,20 @@ class AuditJobs:
             return ""
         return text[-_LOG_TAIL_CHARS:].strip()
 
-    def _stages(self, job: AuditJob) -> List[Dict[str, Any]]:
+    def _stages(self, job: AuditJob, job_state: str) -> List[Dict[str, Any]]:
+        """Per-stage state. Only a running job has a running stage: once a job is
+        cancelled or fails, the stage it was on is marked where it stopped."""
         manifest = _read_json(self.directory / str(job.run_id) / "manifest.json") or {}
         done = set((manifest.get("stages") or {}).keys())
+        current = {"running": "running", "cancelled": "stopped", "failed": "stopped"}.get(
+            job_state, "pending"
+        )
         stages, current_found = [], False
         for key, label in PIPELINE_STAGES:
             if key in done:
                 state = "done"
             elif not current_found:
-                state, current_found = "running", True
+                state, current_found = current, True
             else:
                 state = "pending"
             stages.append({"key": key, "label": label, "state": state})
@@ -689,7 +694,7 @@ class AuditJobs:
                 ),
             }
             if job.kind == "pipeline":
-                payload["stages"] = self._stages(job)
+                payload["stages"] = self._stages(job, state)
                 payload["progress"] = _last_progress(self.directory / str(job.run_id))
             if state == "failed":
                 payload["error"] = self._log_tail(job) or f"The audit process exited with code {code}."

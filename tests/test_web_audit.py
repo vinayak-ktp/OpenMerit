@@ -280,6 +280,7 @@ def test_failed_job_surfaces_the_log_tail(client, runs):
     status = client.get("/api/audit/job").json()["job"]
     assert status["state"] == "failed"
     assert "corpus is empty" in status["error"]
+    assert "running" not in [stage["state"] for stage in status["stages"]]
 
 
 def test_validation_job_stores_the_latest_verdict(client, runs):
@@ -303,6 +304,9 @@ def test_cancel_terminates_the_running_job(client):
     cancelled = client.post("/api/audit/job/cancel").json()["job"]
 
     assert cancelled["state"] == "cancelled"
+    states = [stage["state"] for stage in cancelled["stages"]]
+    assert "running" not in states
+    assert states[0] == "stopped"
     assert client.launcher.processes[0].terminated
     assert client.post("/api/audit/job/cancel").status_code == 409
 

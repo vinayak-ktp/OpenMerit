@@ -46,6 +46,16 @@
     return value.toFixed(3);
   }
 
+  // Estimates are rounded to the nearest 5 minutes; measured times stay exact.
+  function estimate(minutes) {
+    if (!isNum(minutes)) return "unknown time";
+    const rounded = Math.round(minutes / 5) * 5;
+    if (rounded < 5) return "under 5 min";
+    const hours = Math.floor(rounded / 60);
+    const rest = rounded % 60;
+    return hours ? `~${hours} h${rest ? ` ${rest} min` : ""}` : `~${rest} min`;
+  }
+
   function duration(seconds) {
     if (!isNum(seconds)) return "—";
     const total = Math.max(0, Math.round(seconds));
@@ -115,12 +125,12 @@
   }
 
   function costLine(preset) {
-    if (mode === "offline") return `<span class="preset-cost free">Free · ~${esc(preset.estimate_minutes)} min</span>`;
+    if (mode === "offline") return `<span class="preset-cost free">Free · ${estimate(preset.estimate_minutes)}</span>`;
     if (!preset.llm) return '<span class="preset-cost muted">Offline only</span>';
     const plan = plans[`${preset.key}|llm`];
     if (!plan || plan === "loading") return '<span class="preset-cost muted">Counting calls…</span>';
     if (plan.error) return `<span class="preset-cost over">${esc(plan.error)}</span>`;
-    const label = `~${count(plan.api_calls)} calls · ~${duration(plan.estimated_minutes * 60)}`;
+    const label = `~${count(plan.api_calls)} calls · ${estimate(plan.estimated_minutes)}`;
     return plan.within_limit
       ? `<span class="preset-cost">${label}</span>`
       : `<span class="preset-cost over">${label} · over the ${count(plan.max_calls)}-call limit</span>`;
@@ -196,7 +206,7 @@
       <p>The <strong>${esc(preset.label)}</strong> design scores ${count(plan.n_pairs)} candidate/job pairs with <strong>${esc(plan.provider)} / ${esc(plan.model)}</strong>:
         ${count(plan.baseline_calls)} calls for the original resumes and ${count(plan.variant_calls)} for the variants${arms.length ? `, plus ${arms.map(([name, n]) => `${count(n)} for ${esc(human(name))}`).join(", ")}` : ""}.
         ${plan.served_from_cache ? `${count(plan.served_from_cache)} of those repeat earlier prompts and come from the cache. ` : ""}
-        At ${count(plan.requests_per_minute)} requests a minute that takes about ${duration(plan.estimated_minutes * 60)}.</p>
+        At ${count(plan.requests_per_minute)} requests a minute that takes ${estimate(plan.estimated_minutes)}.</p>
       <div class="confirm-actions">
         <button class="primary" id="confirm-start" type="button">Start: spend ~${count(plan.api_calls)} calls</button>
         <button class="text-button neutral" id="confirm-cancel" type="button">Not now</button>
@@ -229,7 +239,7 @@
         : `Tool check · ${job.preset_label || "Audit"}`;
     const stateLabel = { running: "Running", complete: "Complete", failed: "Failed", cancelled: "Cancelled" }[job.state] || job.state;
     const stages = (job.stages || []).map((stage) => `
-      <li class="stage ${stage.state}"><span class="stage-icon" aria-hidden="true"></span>${esc(stage.label)}</li>`).join("");
+      <li class="stage ${stage.state}"><span class="stage-icon" aria-hidden="true"></span>${esc(stage.label)}${stage.state === "stopped" ? ` <em>(${esc(job.state)} here)</em>` : ""}</li>`).join("");
     const doneCount = (job.stages || []).filter((stage) => stage.state === "done").length;
     const total = (job.stages || []).length;
     const progress = job.progress && running && (job.stages || []).some((s) => s.state === "running" && s.key.startsWith("score"))
@@ -245,7 +255,7 @@
           <span class="result-label">${esc(title)}</span>
           <strong class="job-state ${esc(job.state)}">${esc(stateLabel)}</strong>
         </div>
-        <div class="job-time">${duration(job.elapsed_s)} elapsed${running && isNum(job.estimate_minutes) ? ` · about ${duration(job.estimate_minutes * 60)} in total` : ""}</div>
+        <div class="job-time">${duration(job.elapsed_s)} elapsed${running && isNum(job.estimate_minutes) ? ` · ${estimate(job.estimate_minutes)} in total` : ""}</div>
       </div>
       ${running ? `<div class="progress"><i style="width:${total ? Math.max(4, (doneCount / total) * 100) : 100}%"${total ? "" : ' class="indeterminate"'}></i></div>` : ""}
       ${note ? `<p class="job-note">${esc(note)}</p>` : ""}

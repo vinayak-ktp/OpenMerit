@@ -148,6 +148,9 @@ h1 { font-size: clamp(32px, 5vw, 54px); line-height: 1.04; letter-spacing: -.045
 .stage.done .stage-icon { background: var(--accent); border-color: var(--accent); }
 .stage.running { color: var(--ink); font-weight: 700; }
 .stage.running .stage-icon { border-color: var(--accent); border-top-color: transparent; animation: spin 0.9s linear infinite; }
+.stage.stopped { color: #a33b2d; }
+.stage.stopped .stage-icon { border-color: #c4574a; background: #fde8e4; }
+.stage em { font-style: normal; font-weight: 650; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .job-error { background: #fff0ed; color: #a33b2d; border-radius: 9px; padding: 12px; font-size: 12px; white-space: pre-wrap; max-height: 220px; overflow: auto; margin: 14px 0 0; }
 .text-button { background: none; border: 0; color: #a33b2d; font: inherit; font-size: 13px; font-weight: 700; padding: 0; margin-top: 14px; cursor: pointer; }
