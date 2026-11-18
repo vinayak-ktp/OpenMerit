@@ -395,7 +395,46 @@ Two real bugs were found by this oracle and would not have been found otherwise:
 
 ---
 
-## 10. Known limitations
+## 10. Auditing a real model on a budget
+
+The full design in `configs/offline_demo.yaml` makes about 10,400 model calls on
+the sample corpus. Two thirds of them are the two prompt-level mitigation arms
+(blind screening and the debias prompt), which re-score every variant; most of
+the rest are repeats of every variant. Very few of those calls change whether a
+bias is found. The lean designs keep that evidence and give up precision:
+`configs/quick_audit.yaml` (names across gender and race, 186 calls) and
+`configs/all_cues_audit.yaml` (all nine cue families, 244 calls).
+
+| Saving | Setting | Why the evidence survives |
+| --- | --- | --- |
+| Audit only borderline candidates | `perturbation.focus_pairs` | A cue can only change the decision for a candidate near the 55 or 70 cut-off. The pairs nearest a threshold are chosen from the baseline scores, after the scorer-discrimination gate has run on every pair. |
+| Repeat only the original resume | `llm.repeat_scope: baseline` | The noise floor and the noise-only flip rate need repeated decodes of an identical prompt, which each candidate's original resume provides. Cue variants are scored once. |
+| Fewer variants per cue, rotated | `perturbation.levels_by_family`, `perturbation.rotate_levels` | Each variant is compared with the same candidate's original resume and the comparisons are pooled, so no candidate needs every level. Rotation spreads the kept levels evenly across candidates; random draws left some levels unobserved. Names keep eight levels, two per gender × race cell. |
+| Defer prompt-level mitigations | `mitigation.strategies` | The post-hoc mitigations need no calls. Re-scoring with blind screening or the debias prompt is worth paying for only once a bias has been found, and then only for the arm that would be deployed. |
+
+**Sensitivity is kept.** On the offline scorer, both lean designs report no
+material effect under a no-bias null and recover an injected −3.0 point penalty
+for female names as −2.75 points overall, exactly the expected transmitted
+effect, with q < 0.001. `tests/test_audit_cost.py` keeps this as a regression
+test.
+
+**What is given up.** Fewer observations per level widen the interval for any
+single level (one name, one location), so per-level comparisons need the full
+design. A focused run's flip rates describe borderline candidates rather than
+the whole pool; the run records this as a design note. Scoring variants once
+also removes the decoding noise that usually hides tiny effects, so a
+deterministic 0.01-point text artefact can come out statistically significant.
+That is why results are read from **significant and above threshold**:
+significant after the Benjamini–Hochberg correction *and* past the metric's
+practical threshold, rather than significance alone.
+
+Use the lean designs for routine audits, once per model or prompt version. Run
+the full design when per-level precision or a mitigation head-to-head is the
+goal.
+
+---
+
+## 11. Known limitations
 
 - **Sample size.** 12 resumes x 6 jobs in the shipped corpus. The blocked design
   recovers effects far better than a pooled comparison at this size, but small
@@ -419,7 +458,7 @@ Two real bugs were found by this oracle and would not have been found otherwise:
 
 ---
 
-## 11. References
+## 12. References
 
 The Phase-I literature review (15 papers) plus the methodological sources this
 implementation relies on directly:
