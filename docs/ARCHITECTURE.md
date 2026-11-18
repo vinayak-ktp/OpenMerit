@@ -46,7 +46,8 @@ src/                     ← imported as `openmerit` (see "The src/ mapping" bel
 ├── pipeline/            orchestration, run manifests, artifacts
 ├── report/              plots, HTML/Markdown, explanation cards, model card
 ├── app/                 Streamlit dashboard (reads artifacts only)
-└── web_api.py           FastAPI single-resume evaluator (separate from the audit)
+├── web_api.py           FastAPI single-resume evaluator (separate from the audit)
+└── web_audit.py         the audit tab: plans, launches and reads audit runs
 ```
 
 ### The `src/` mapping
@@ -168,6 +169,28 @@ decision support only.
 
 The offline score is a keyword-overlap baseline, not an independent truth, so a
 gap against the LLM is expected to shrink but not vanish.
+
+### `web_audit.py` — the fairness audit in the browser
+
+The audit tab drives the same pipeline as `openmerit pipeline`; nothing is
+re-implemented for the web.
+
+- **Plan before spending.** A design's cost comes from a dry run in a child
+  process, which counts every model call, including the mitigation arms that
+  re-score variants. The server refuses an LLM audit that was not confirmed
+  against that count, or that exceeds `OPENMERIT_AUDIT_MAX_CALLS`.
+- **One job at a time, out of process.** Audits run as
+  `python -m openmerit.web_audit` child processes, so a CPU-heavy run does not compete
+  with the evaluator for the interpreter and cancelling is a clean process stop.
+  Stage progress comes from the run manifest and scoring progress from the
+  structured run log.
+- **Two modes, one code path.** `llm` mode is given the evaluator's provider and
+  model explicitly; `offline` mode forces the mock provider. Environment
+  overrides are not applied wholesale, so `OPENMERIT_PROVIDER` can never turn a tool
+  check into a paid run.
+- **Reading never calls a model.** The results view reads finished run folders,
+  so CLI runs and browser runs are browsed the same way. Report files are served
+  only from a run's `report/` folder.
 
 ### Adding an LLM provider
 

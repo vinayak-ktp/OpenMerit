@@ -23,6 +23,7 @@ population-level benchmark workflow.
 - [Quick start](#quick-start-web-evaluator)
 - [Choosing an LLM provider](#choosing-an-llm-provider-optional)
 - [Using the evaluator](#using-the-evaluator)
+- [Fairness audit in the web app](#fairness-audit-in-the-web-app)
 - [Fairness research workflow](#fairness-research-workflow)
 - [Common commands](#common-commands)
 - [Troubleshooting](#troubleshooting)
@@ -95,6 +96,8 @@ Optional settings (environment variables or `.env`):
 | `GEMINI_API_KEY` | none | Key for `gemini` |
 | `OPENAI_API_KEY` | none | Key for `openai` |
 | `OPENAI_BASE_URL` | OpenAI | Point `openai` at a compatible endpoint |
+| `OPENMERIT_AUDIT_MAX_CALLS` | `1000` | Most API calls one audit started from the browser may make |
+| `OPENMERIT_RPM` | `12` | Requests per minute for browser-started LLM audits; sets pacing and time estimates |
 | `OPENMERIT_WEB_HOST` | `127.0.0.1` | Bind address |
 | `OPENMERIT_WEB_PORT` | `8000` | Port |
 
@@ -126,6 +129,40 @@ Adding another provider is one file plus one line; see
 The offline comparison is a scoring comparison, not a fairness certification.
 Differences should be reviewed by a person and are not proof that either score
 is correct.
+
+## Fairness audit in the web app
+
+`uv run openmerit web` serves both workflows. The **Fairness audit** tab has two modes:
+
+- **LLM audit** runs the audit with the same provider and model as the
+  evaluator. This is the audit that matters for a deployment. Every design shows
+  its exact number of API calls and its expected time before anything starts,
+  and a run begins only after you confirm that number. Designs above
+  `OPENMERIT_AUDIT_MAX_CALLS` are refused in the browser.
+- **Tool check** runs the same audit on the offline scorer. It is free and says
+  nothing about a real model: it checks that the audit stays quiet when there is
+  no bias. **Validate the auditor** also injects a known bias and checks that the
+  audit recovers it.
+
+| Design | Calls on a real LLM | Use it for |
+| --- | --- | --- |
+| Quick audit (`configs/quick_audit.yaml`) | 186 | Names across gender and race. Start here. |
+| All cues (`configs/all_cues_audit.yaml`) | 244 | All nine cue families |
+| Names-only replication (`configs/names_only.yaml`) | about 1,440 | Every name in the list |
+| Full cue sweep (`configs/offline_demo.yaml`) | about 10,400 | Research precision; tool check only in the browser |
+
+The two lean designs audit only the candidates nearest a decision cut-off,
+repeat only each original resume to measure noise, keep two variants per cue
+(eight names, two per gender and race group) rotated evenly across candidates,
+and leave prompt-level mitigations for a follow-up once a bias is found.
+[`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) §10 explains why each saving keeps
+the evidence. Re-running an unchanged design is served from the response cache
+and costs nothing.
+
+Read a result from **Significant and above threshold**: effects that survive the
+multiple-testing correction *and* are large enough to matter. A run can be
+cancelled at any point, and runs started from the CLI appear in the same results
+view.
 
 ## Fairness research workflow
 
@@ -168,10 +205,11 @@ uv run openmerit dashboard
 The Streamlit dashboard is for research artifacts and is intentionally separate
 from the one-resume candidate evaluator.
 
-Before spending API quota, inspect a planned run:
+Before spending API quota, inspect a planned run. The dry run prints the total
+number of model calls, including mitigation arms that re-score variants:
 
 ```bash
-uv run openmerit pipeline --config configs/default.yaml --dry-run
+uv run openmerit pipeline --config configs/quick_audit.yaml --provider gemini --dry-run
 ```
 
 ## Common commands
@@ -216,6 +254,7 @@ data/benchmark/             Controlled synthetic fairness benchmark
 docs/                       Architecture, data, and methodology documentation
 scripts/                    Corpus and benchmark generation utilities
 src/web_api.py              FastAPI backend for the candidate evaluator (median-of-3 LLM scoring)
+src/web_audit.py            Plans, launches and reads fairness audits for the web app
 src/screening/              Resume scoring, prompts, evidence, and rubric logic
 src/perturb/                Controlled cue and counterfactual generation
 src/fairness/               System-level fairness metrics and audit suite
